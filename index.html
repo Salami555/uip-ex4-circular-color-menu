@@ -21,6 +21,7 @@
     svg .menuEntry text {
       font-size: 0.08;
       color: black;
+      dominant-baseline: middle;
     }
     svg .menuEntry:hover text {
       /* font-size: 0.1; */
@@ -79,42 +80,44 @@
       var svgNS = svgContainer.namespaceURI;
       const menuElementGroup = document.createElementNS(svgNS, 'g');
       menuElementGroup.classList.add('menuEntry');
-      menuElementGroup.setAttribute('transform', 'translate(0.5 0.5) rotate('+menuEntry.alphaStart+')');
+      menuElementGroup.setAttribute('transform', 'translate(0.5 0.5) rotate(' + menuEntry.alphaStart + ')');
+      menuElementGroup.addEventListener('click', (evt) => {
+        evt.menuEntry = menuEntry;
+        menuEntry.eventHandler(evt);
+      });
       const menuElementScaleGroup = document.createElementNS(svgNS, 'g');
       menuElementScaleGroup.classList.add('scaleGroup');
 
       const menuElementBG = document.createElementNS(svgNS, 'path');
       menuElementBG.id = menuEntry.name;
-      menuElementBG.addEventListener('click', (evt) => {
-        evt.menuEntry = menuEntry;
-        menuEntry.eventHandler(evt);
-      });
-      menuElementBG.setAttribute('d', circleSection({x: 0, y: 0}, menuEntry.radii, 0, menuEntry.alphaSize));
-      
+      menuElementBG.setAttribute('d', circleSection(
+        { x: 0, y: 0 }, menuEntry.radii,
+        - menuEntry.alphaSize / 2,
+        + menuEntry.alphaSize / 2
+      ));
+
       const menuElementText = document.createElementNS(svgNS, 'text');
       menuElementText.textContent = menuEntry.name;
-      // menuElementText.setAttribute('x', menuEntry.radii.center);
-      // menuElementText.setAttribute('transform', 'rotate(-45)');
-      if(menuEntry.alphaStart >= 180) {
-        // const rotation = svgContainer.createSVGTransform();
-        // rotation.setRotate(180, menuEntry.radii.center, 0);
-        // menuElementText.transform.baseVal.appendItem(rotation);
-      }
 
       menuElementScaleGroup.appendChild(menuElementBG);
       menuElementScaleGroup.appendChild(menuElementText);
       menuElementGroup.appendChild(menuElementScaleGroup);
       svgContainer.appendChild(menuElementGroup);
-      
-      console.log(menuElementText.getBBox(), menuElementText.getComputedTextLength());
-      // translate('+menuEntry.radii.center+')
-      const textTranslate = svgContainer.createSVGTransform();
-      textTranslate.setTranslate(-menuElementText.getComputedTextLength()/2, 0, 0);
-      // menuElementText.transform.baseVal.appendItem(textTranslate);
-      if(menuEntry.alphaStart >= 180) {
-        const textRotate = svgContainer.createSVGTransform();
-        textRotate.setRotate(180, 0, 0);
-        // menuElementText.transform.baseVal.appendItem(textRotate);
+
+      const textLength = menuElementText.getComputedTextLength();
+      const textRotate1 = svgContainer.createSVGTransform();
+      textRotate1.setRotate(-90, 0, 0);
+      menuElementText.transform.baseVal.appendItem(textRotate1);
+      const textTranslate1 = svgContainer.createSVGTransform();
+      textTranslate1.setTranslate(menuEntry.radii.center, 0, 0);
+      menuElementText.transform.baseVal.appendItem(textTranslate1);
+      const textTranslate2 = svgContainer.createSVGTransform();
+      textTranslate2.setTranslate(-textLength/2, 0, 0);
+      menuElementText.transform.baseVal.appendItem(textTranslate2);
+      if (menuEntry.alphaStart >= 180) {
+        const textRotate2 = svgContainer.createSVGTransform();
+        textRotate2.setRotate(180, textLength/2, 0);
+        menuElementText.transform.baseVal.appendItem(textRotate2);
       }
     }
 
