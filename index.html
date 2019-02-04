@@ -1,0 +1,143 @@
+<html>
+
+<head>
+  <title>test</title>
+  <style>
+    svg .menuEntry {
+      cursor: pointer;
+    }
+    svg .menuEntry:hover .scaleGroup {
+      transform: scale(1.05);
+    }
+    svg .menuEntry path {
+      fill: gray;
+      stroke: black;
+      stroke-width: 0.001;
+    }
+    svg .menuEntry:hover path {
+      fill: cornflowerblue;
+    }
+
+    svg .menuEntry text {
+      font-size: 0.08;
+      color: black;
+    }
+    svg .menuEntry:hover text {
+      /* font-size: 0.1; */
+      color: cornflowerblue;
+    }
+  </style>
+</head>
+
+<body>
+  <svg style="width: 100%; height: 100%" viewBox="0 0 1 1" id="contextMenuContainer">
+  </svg>
+  <script>
+    function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
+      var angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+
+      return {
+        x: centerX + (radius * Math.cos(angleInRadians)),
+        y: centerY + (radius * Math.sin(angleInRadians))
+      };
+    }
+
+    function describeArc(x, y, radius, startAngle, endAngle) {
+
+      var start = polarToCartesian(x, y, radius, endAngle);
+      var end = polarToCartesian(x, y, radius, startAngle);
+
+      var largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+
+      var d = [
+        'M', start.x, start.y,
+        'A', radius, radius, 0, largeArcFlag, 0, end.x, end.y
+      ].join(' ');
+
+      return d;
+    }
+
+    function circleSection(center, radii, startAngle, endAngle) {
+      const startIn = polarToCartesian(center.x, center.y, radii.inner, endAngle);
+      const startOut = polarToCartesian(center.x, center.y, radii.outer, endAngle);
+      const endOut = polarToCartesian(center.x, center.y, radii.outer, startAngle);
+      const endIn = polarToCartesian(center.x, center.y, radii.inner, startAngle);
+
+      const largeArcFlag = (endAngle - startAngle <= 180) ? 0 : 1;
+
+      const d = [
+        'M', startIn.x, startIn.y,
+        'L', startOut.x, startOut.y,
+        'A', radii.outer, radii.outer, 0, largeArcFlag, 0, endOut.x, endOut.y,
+        'L', endIn.x, endIn.y,
+        'A', radii.inner, radii.inner, 0, largeArcFlag, 1, startIn.x, startIn.y,
+      ];
+      return d.join(' ');
+    }
+
+    function createMenuEntry(svgContainer, menuEntry) {
+      var svgNS = svgContainer.namespaceURI;
+      const menuElementGroup = document.createElementNS(svgNS, 'g');
+      menuElementGroup.classList.add('menuEntry');
+      menuElementGroup.setAttribute('transform', 'translate(0.5 0.5) rotate('+menuEntry.alphaStart+')');
+      const menuElementScaleGroup = document.createElementNS(svgNS, 'g');
+      menuElementScaleGroup.classList.add('scaleGroup');
+
+      const menuElementBG = document.createElementNS(svgNS, 'path');
+      menuElementBG.id = menuEntry.name;
+      menuElementBG.addEventListener('click', (evt) => {
+        evt.menuEntry = menuEntry;
+        menuEntry.eventHandler(evt);
+      });
+      menuElementBG.setAttribute('d', circleSection({x: 0, y: 0}, menuEntry.radii, 0, menuEntry.alphaSize));
+      
+      const menuElementText = document.createElementNS(svgNS, 'text');
+      menuElementText.textContent = menuEntry.name;
+      // menuElementText.setAttribute('x', menuEntry.radii.center);
+      // menuElementText.setAttribute('transform', 'rotate(-45)');
+      if(menuEntry.alphaStart >= 180) {
+        // const rotation = svgContainer.createSVGTransform();
+        // rotation.setRotate(180, menuEntry.radii.center, 0);
+        // menuElementText.transform.baseVal.appendItem(rotation);
+      }
+
+      menuElementScaleGroup.appendChild(menuElementBG);
+      menuElementScaleGroup.appendChild(menuElementText);
+      menuElementGroup.appendChild(menuElementScaleGroup);
+      svgContainer.appendChild(menuElementGroup);
+      
+      console.log(menuElementText.getBBox(), menuElementText.getComputedTextLength());
+      // translate('+menuEntry.radii.center+')
+      const textTranslate = svgContainer.createSVGTransform();
+      textTranslate.setTranslate(-menuElementText.getComputedTextLength()/2, 0, 0);
+      // menuElementText.transform.baseVal.appendItem(textTranslate);
+      if(menuEntry.alphaStart >= 180) {
+        const textRotate = svgContainer.createSVGTransform();
+        textRotate.setRotate(180, 0, 0);
+        // menuElementText.transform.baseVal.appendItem(textRotate);
+      }
+    }
+
+    function createMenu(svgContainer, menuEntries) {
+      const sectionAlphaSize = 360 / menuEntries.length;
+      menuEntries.forEach((menuEntry, index) => {
+        menuEntry.alphaSize = sectionAlphaSize;
+        menuEntry.alphaStart = index * sectionAlphaSize,
+        menuEntry.alphaEnd = menuEntry.alphaStart + sectionAlphaSize;
+        menuEntry.radii = { inner: 0.1, outer: 0.5, center: 0.3 };
+        createMenuEntry(svgContainer, menuEntry);
+      });
+    }
+    createMenu(document.getElementById('contextMenuContainer'), [
+      { name: 'RGB', eventHandler: (evt) => console.log(evt.menuEntry) },
+      { name: 'HSB', eventHandler: (evt) => console.log(evt.menuEntry) },
+      { name: 'HSL', eventHandler: (evt) => console.log(evt.menuEntry) },
+      { name: 'YCbCr', eventHandler: (evt) => console.log(evt.menuEntry) },
+      { name: 'Alpha', eventHandler: (evt) => console.log(evt.menuEntry) },
+      { name: 'Recent', eventHandler: (evt) => console.log(evt.menuEntry) },
+      { name: 'Saved', eventHandler: (evt) => console.log(evt.menuEntry) },
+    ]);
+  </script>
+</body>
+
+</html>
