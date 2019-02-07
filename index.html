@@ -80,6 +80,8 @@
   <svg viewBox="0 0 1 1" id="contextMenuContainer">
   </svg>
   <script>
+    "Strict mode";
+
     function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
       var angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
 
@@ -89,103 +91,235 @@
       };
     }
 
-    function describeArc(x, y, radius, startAngle, endAngle) {
+    class CircleMenu {
+      constructor(svgContainer, entries) {
+        this.svgContainer = svgContainer;
+        this.svgNS = this.svgContainer.namespaceURI;
+        this.entries = entries;
+        this.entryMap = {};
+        this.color = {
+          'format': 'RGB',
+          'data': {
+            'r': 0,
+            'g': 0,
+            'b': 0
+          },
+          'alpha': 1
+        };
+        this.radii = { inner: 0.1, outer: 0.5, center: 0.3 };
 
-      var start = polarToCartesian(x, y, radius, endAngle);
-      var end = polarToCartesian(x, y, radius, startAngle);
+        this.svgContainer.style.visibility = 'hidden';
 
-      var largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+        this.menuContainer = this.createSVGElement('g');
+        this.addSVGTransform(this.menuContainer, tf => tf.setTranslate(0.5, 0.5));
+        this.addSVGTransform(this.menuContainer, tf => (this.scaleTransformation = tf));
+        console.log(this.scaleTransformation);
+        this.menuContainer.classList.add('menuGroup');
+        svgContainer.appendChild(this.menuContainer);
 
-      var d = [
-        'M', start.x, start.y,
-        'A', radius, radius, 0, largeArcFlag, 0, end.x, end.y
-      ].join(' ');
+        this.colorPreview = this.createSVGElement('circle');
+        this.colorPreview.setAttribute('r', this.radii.outer);
+        this.addSVGTransform(this.colorPreview, tf => tf.setScale(1.05, 1.05));
+        this.colorPreview.addEventListener('click', () => this.close());
+        this.menuContainer.appendChild(this.colorPreview);
+        this.updateColor();
 
-      return d;
-    }
+        this.menuMainElements = this.createSVGElement('g');
+        this.menuMainElements.classList.add('menuMainElementGroup');
+        this.menuContainer.appendChild(this.menuMainElements);
 
-    function circleSection(center, radii, startAngle, endAngle) {
-      const startIn = polarToCartesian(center.x, center.y, radii.inner, endAngle);
-      const startOut = polarToCartesian(center.x, center.y, radii.outer, endAngle);
-      const endOut = polarToCartesian(center.x, center.y, radii.outer, startAngle);
-      const endIn = polarToCartesian(center.x, center.y, radii.inner, startAngle);
+        const sectionAlphaSize = 360 / this.entries.length;
+        this.entries.forEach((menuEntry, index) => {
+          this.entryMap[menuEntry.name] = menuEntry;
+          menuEntry.index = index;
+          menuEntry.alphaSize = sectionAlphaSize;
+          menuEntry.alphaStart = index * sectionAlphaSize;
+          menuEntry.alphaEnd = menuEntry.alphaStart + sectionAlphaSize;
+          menuEntry.radii = this.radii;
+          this.createMenuEntry(menuEntry);
+        });
 
-      const largeArcFlag = (endAngle - startAngle <= 180) ? 0 : 1;
+        this.close();
+      }
 
-      const d = [
-        'M', startIn.x, startIn.y,
-        'L', startOut.x, startOut.y,
-        'A', radii.outer, radii.outer, 0, largeArcFlag, 0, endOut.x, endOut.y,
-        'L', endIn.x, endIn.y,
-        'A', radii.inner, radii.inner, 0, largeArcFlag, 1, startIn.x, startIn.y,
-      ];
-      return d.join(' ');
-    }
+      createSVGElement(tagName) {
+        return document.createElementNS(this.svgNS, tagName);
+      }
+      addSVGTransform(element, transformationSetter) {
+        const transform = this.svgContainer.createSVGTransform();
+        transformationSetter(transform);
+        element.transform.baseVal.appendItem(transform);
+      }
 
-    function createMenuEntry(svgContainer, menuEntry) {
-      var svgNS = svgContainer.namespaceURI;
-      const menuElementGroup = document.createElementNS(svgNS, 'g');
-      menuElementGroup.classList.add('menuEntry');
-      menuElementGroup.setAttribute('transform', 'translate(0.5 0.5) rotate(' + menuEntry.alphaStart + ')');
-      menuElementGroup.addEventListener('click', (evt) => {
-        evt.menuEntry = menuEntry;
-        menuEntry.eventHandler(evt);
-      });
-      const menuElementScaleGroup = document.createElementNS(svgNS, 'g');
-      menuElementScaleGroup.classList.add('scaleGroup');
+      createMenuEntry(menuEntry) {
+        const menuElementGroup = this.createSVGElement('g');
+        menuElementGroup.classList.add('menuEntry');
+        menuElementGroup.dataset.entry = menuEntry.name;
+        menuEntry.element = menuElementGroup;
+        this.addSVGTransform(menuElementGroup, tf => tf.setRotate(menuEntry.alphaStart, 0, 0));
+        menuElementGroup.addEventListener('click', (evt) => {
+          evt.menuEntry = menuEntry;
+          evt.menu = this;
+          menuEntry.eventHandler(evt);
+        });
+        this.menuMainElements.appendChild(menuElementGroup);
 
-      const menuElementBG = document.createElementNS(svgNS, 'path');
-      menuElementBG.id = menuEntry.name;
-      menuElementBG.setAttribute('d', circleSection(
-        { x: 0, y: 0 }, menuEntry.radii,
-        - menuEntry.alphaSize / 2,
-        + menuEntry.alphaSize / 2
-      ));
+        const hoverScaleGroup = this.createSVGElement('g');
+        hoverScaleGroup.classList.add('hoverScaleGroup');
+        menuElementGroup.appendChild(hoverScaleGroup);
+        
+        const introScaleGroup = this.createSVGElement('g');
+        introScaleGroup.classList.add('introScaleGroup');
+        introScaleGroup.style.transitionDelay = 30 + (20 * menuEntry.index) + 'ms';
+        console.log(menuEntry.index, menuEntry.name, introScaleGroup.style.transitionDelay);
+        menuEntry.introScaleGroup = introScaleGroup;
+        hoverScaleGroup.appendChild(introScaleGroup);
 
-      const menuElementText = document.createElementNS(svgNS, 'text');
-      menuElementText.textContent = menuEntry.name;
+        const menuElementBG = this.createSVGElement('path');
+        menuElementBG.id = menuEntry.name;
+        menuElementBG.setAttribute('d', this.pathCircleSection(
+          { x: 0, y: 0 }, menuEntry.radii,
+          - menuEntry.alphaSize / 2,
+          + menuEntry.alphaSize / 2
+        ));
+        introScaleGroup.appendChild(menuElementBG);
 
-      menuElementScaleGroup.appendChild(menuElementBG);
-      menuElementScaleGroup.appendChild(menuElementText);
-      menuElementGroup.appendChild(menuElementScaleGroup);
-      svgContainer.appendChild(menuElementGroup);
+        const menuElementText = this.createSVGElement('text');
+        menuElementText.textContent = menuEntry.name;
+        introScaleGroup.appendChild(menuElementText);
+        const textLength = menuElementText.getComputedTextLength();
+        this.addSVGTransform(menuElementText, tf => tf.setRotate(-90, 0, 0));
+        this.addSVGTransform(menuElementText, tf => tf.setTranslate(menuEntry.radii.center, 0));
+        this.addSVGTransform(menuElementText, tf => tf.setTranslate(-textLength / 2, 0));
+        if (menuEntry.alphaStart >= 180) {
+          this.addSVGTransform(menuElementText, tf => tf.setRotate(180, textLength / 2, 0));
+        }
+      }
 
-      const textLength = menuElementText.getComputedTextLength();
-      const textRotate1 = svgContainer.createSVGTransform();
-      textRotate1.setRotate(-90, 0, 0);
-      menuElementText.transform.baseVal.appendItem(textRotate1);
-      const textTranslate1 = svgContainer.createSVGTransform();
-      textTranslate1.setTranslate(menuEntry.radii.center, 0, 0);
-      menuElementText.transform.baseVal.appendItem(textTranslate1);
-      const textTranslate2 = svgContainer.createSVGTransform();
-      textTranslate2.setTranslate(-textLength/2, 0, 0);
-      menuElementText.transform.baseVal.appendItem(textTranslate2);
-      if (menuEntry.alphaStart >= 180) {
-        const textRotate2 = svgContainer.createSVGTransform();
-        textRotate2.setRotate(180, textLength/2, 0);
-        menuElementText.transform.baseVal.appendItem(textRotate2);
+      registerAsContextMenu() {
+        document.addEventListener('contextmenu', (evt) => {
+          evt.preventDefault();
+          this.openAt(evt.clientX, evt.clientY);
+        });
+        document.addEventListener('mousedown', (evt) => {
+          if (this.isOpen() && !this.svgContainer.contains(evt.target)) {
+            if(event.button != 2) {
+              evt.preventDefault();
+              this.close();
+            }
+          }
+        });
+        document.addEventListener('keyup', (evt) => {
+          if (this.isOpen() && evt.key == 'Escape') {
+            evt.preventDefault();
+            this.close();
+          }
+        });
+      }
+
+      getMenuEntry(entryName) {
+        return this.entryMap[entryName];
+      }
+
+      get currentColor() {
+        return this.colorPreview.fill;
+      }
+
+      updateColor() {
+        let colorString;
+        switch (this.color.format) {
+          case 'RGB':
+            colorString = `rgba(${this.color.data.r * 255}, ${this.color.data.g * 255}, ${this.color.data.b * 255}, ${this.color.alpha})`;
+            break;
+        }
+        console.log(colorString);
+        this.colorPreview.setAttribute('fill', colorString);
+      }
+
+      setColorAlpha(alpha) {
+        this.color.alpha = alpha;
+        this.updateColor();
+      }
+
+      setColorRGB(r, g, b) {
+        this.color.format = 'RGB';
+        this.color.data = {
+          'r': r,
+          'g': g,
+          'b': b
+        };
+        this.updateColor();
+      }
+
+      setColorRandom() {
+        this.setColorRGB(Math.random(), Math.random(), Math.random());
+      }
+
+      setScale(scale) {
+        this.scaleTransformation.setScale(scale, scale);
+      }
+
+      isOpen() {
+        return this.svgContainer.style.visibility == 'visible';
+      }
+
+      openAt(x, y) {
+        this.svgContainer.style.left = x;
+        this.svgContainer.style.top = y;
+        if(!this.isOpen()) {
+          this.entries.forEach(entry => entry.introScaleGroup.classList.add('show'));
+          this.setScale(0.95);
+          this.svgContainer.style.visibility = 'visible';
+        }
+      }
+
+      close() {
+        this.svgContainer.style.visibility = 'hidden';
+        this.setScale(0.0);
+        this.entries.forEach(entry => entry.introScaleGroup.classList.remove('show'));
+      }
+
+      pathCircleSection(center, radii, startAngle, endAngle) {
+        const startIn = polarToCartesian(center.x, center.y, radii.inner, endAngle);
+        const startOut = polarToCartesian(center.x, center.y, radii.outer, endAngle);
+        const endOut = polarToCartesian(center.x, center.y, radii.outer, startAngle);
+        const endIn = polarToCartesian(center.x, center.y, radii.inner, startAngle);
+
+        const largeArcFlag = (endAngle - startAngle <= 180) ? 0 : 1;
+
+        const d = [
+          'M', startIn.x, startIn.y,
+          'L', startOut.x, startOut.y,
+          'A', radii.outer, radii.outer, 0, largeArcFlag, 0, endOut.x, endOut.y,
+          'L', endIn.x, endIn.y,
+          'A', radii.inner, radii.inner, 0, largeArcFlag, 1, startIn.x, startIn.y,
+        ];
+        return d.join(' ');
       }
     }
 
-    function createMenu(svgContainer, menuEntries) {
-      const sectionAlphaSize = 360 / menuEntries.length;
-      menuEntries.forEach((menuEntry, index) => {
-        menuEntry.alphaSize = sectionAlphaSize;
-        menuEntry.alphaStart = index * sectionAlphaSize,
-        menuEntry.alphaEnd = menuEntry.alphaStart + sectionAlphaSize;
-        menuEntry.radii = { inner: 0.1, outer: 0.5, center: 0.3 };
-        createMenuEntry(svgContainer, menuEntry);
-      });
-    }
-    createMenu(document.getElementById('contextMenuContainer'), [
-      { name: 'Alpha', eventHandler: (evt) => console.log(evt.menuEntry) },
-      { name: 'RGB', eventHandler: (evt) => console.log(evt.menuEntry) },
-      { name: 'YCbCr', eventHandler: (evt) => console.log(evt.menuEntry) },
-      { name: 'Recent', eventHandler: (evt) => console.log(evt.menuEntry) },
-      { name: 'Saved', eventHandler: (evt) => console.log(evt.menuEntry) },
+    (window.contextMenu = new CircleMenu(document.getElementById('contextMenuContainer'), [
+      {
+        name: 'Alpha', eventHandler: (evt) => {
+          evt.menu.setColorAlpha(Math.random());
+        }
+      },
+      {
+        name: 'RGB', eventHandler: (evt) => {
+          evt.menu.setColorRGB(1, 0, 0);
+        }
+      },
+      // { name: 'YCbCr', eventHandler: (evt) => console.log(evt.menuEntry) },
       { name: 'HSB', eventHandler: (evt) => console.log(evt.menuEntry) },
       { name: 'HSL', eventHandler: (evt) => console.log(evt.menuEntry) },
-    ]);
+      { name: 'Recent', eventHandler: (evt) => console.log(evt.menuEntry) },
+      { name: 'Saved', eventHandler: (evt) => console.log(evt.menuEntry) },
+      {
+        name: 'Random', eventHandler: (evt) => {
+          evt.menu.setColorRandom();
+        }
+      },
+    ])).registerAsContextMenu();
   </script>
 </body>
 
