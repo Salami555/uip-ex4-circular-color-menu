@@ -26,9 +26,17 @@
       font-family: sans-serif;
       clip-path: circle(120px);
       clip-path: stroke-box;
+      transition: visibility 500ms,
+        left 40ms ease-out,
+        top 40ms ease-out;
+    }
+
+    svg .menuGroup {
+      transition: transform 60ms ease-in;
     }
 
     svg circle {
+      transition: fill 60ms linear;
       stroke: black;
       stroke-width: 0.0025;
     }
@@ -38,6 +46,7 @@
     }
 
     svg .menuEntry .hoverScaleGroup {
+      transition: transform 20ms ease-out;
       transform: scale(1.00);
     }
 
@@ -46,6 +55,7 @@
     }
 
     svg .menuEntry .introScaleGroup {
+      transition: transform 60ms linear;
       transform: scale(0);
     }
 
@@ -54,6 +64,7 @@
     }
 
     svg .menuEntry path {
+      transition: fill 80ms;
       fill: lightgray;
       stroke: black;
       stroke-width: 0.0015;
@@ -68,7 +79,9 @@
       font-weight: 500;
       fill: black;
       dominant-baseline: middle;
+      transition: font-weight 100ms linear, fill 80ms ease;
     }
+
     svg .menuEntry:hover text {
       fill: white;
       font-weight: 600;
