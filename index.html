@@ -141,15 +141,6 @@
   <script>
     "Strict mode";
 
-    function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
-      var angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
-
-      return {
-        x: centerX + (radius * Math.cos(angleInRadians)),
-        y: centerY + (radius * Math.sin(angleInRadians))
-      };
-    }
-
     class CircleMenu {
       constructor(svgContainer, entries, options = { animated: false }) {
         this.svgContainer = svgContainer;
@@ -174,8 +165,7 @@
 
         this.menuContainer = this.createSVGElement('g');
         this.addSVGTransform(this.menuContainer, tf => tf.setTranslate(0.5, 0.5));
-        this.addSVGTransform(this.menuContainer, tf => (this.scaleTransformation = tf));
-        console.log(this.scaleTransformation);
+        this.scaleTransformation = this.addSVGTransform(this.menuContainer, tf => tf);
         this.menuContainer.classList.add('menuGroup');
         svgContainer.appendChild(this.menuContainer);
 
@@ -190,17 +180,12 @@
         this.menuMainElements.classList.add('menuMainElementGroup');
         this.menuContainer.appendChild(this.menuMainElements);
 
-        const sectionAlphaSize = 360 / this.entries.length;
-        this.entries.forEach((menuEntry, index) => {
-          this.entryMap[menuEntry.name] = menuEntry;
-          menuEntry.index = index;
-          menuEntry.alphaSize = sectionAlphaSize;
-          menuEntry.alphaStart = index * sectionAlphaSize;
-          menuEntry.alphaEnd = menuEntry.alphaStart + sectionAlphaSize;
-          menuEntry.radii = this.radii;
-          this.createMenuEntry(menuEntry);
-        });
+        this.menuSecondaryElements = this.createSVGElement('g');
+        this.menuSecondaryElements.classList.add('menuSecondaryElementGroup');
+        this.menuContainer.appendChild(this.menuSecondaryElements);
 
+        this.createMainMenu();
+        this.createSlider(this.menuSecondaryElements, { value: 0, degree: -60 }, { value: 1, degree: +60 }, 0.25);
         this.close();
       }
 
@@ -211,29 +196,179 @@
         const transform = this.svgContainer.createSVGTransform();
         transformationSetter(transform);
         element.transform.baseVal.appendItem(transform);
+        return transform;
       }
 
-      createMenuEntry(menuEntry) {
+      polarToCartesian(centerX, centerY, radius, angleInDegrees) {
+        const point = this.svgContainer.createSVGPoint();
+        const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+        point.x = centerX + (radius * Math.cos(angleInRadians));
+        point.y = centerY + (radius * Math.sin(angleInRadians));
+        return point;
+      }
+
+      createSlider(menuGroup, min, max, currentValue) {
+        const sliderGroup = this.createSVGElement('g');
+        sliderGroup.classList.add('menuEntry');
+        sliderGroup.classList.add('slider');
+        sliderGroup.dataset['min'] = min.value;
+        sliderGroup.dataset['max'] = max.value;
+        sliderGroup.dataset['current'] = currentValue;
+        menuGroup.appendChild(sliderGroup);
+        const innerR = this.radii.inner;
+        const outerR = this.radii.outer;
+
+        const valueToDegree = (value) => {
+          const percentage = (value - min.value) / (max.value - min.value);
+          return min.degree + (max.degree - min.degree) * percentage;
+        };
+        const degreeToValue = (degree) => {
+          const percentage = (degree - min.degree) / (max.degree - min.degree);
+          return min.value + (max.value - min.value) * percentage;
+        };
+
+        const sliderBG = this.createSVGElement('path');
+        sliderBG.setAttribute('d', this.pathCircleSection(
+          { x: 0, y: 0 }, this.radii,
+          min.degree, max.degree
+        ));
+        sliderGroup.appendChild(sliderBG);
+
+        const sliderText = this.createSVGElement('text');
+        sliderText.setAttribute('y', - this.radii.center);
+        const updateLabel = () => {
+          sliderText.textContent = currentValue.toFixed(2);
+          const textLength = sliderText.getComputedTextLength();
+          sliderText.setAttribute('x', -textLength / 2);
+        };
+        sliderGroup.appendChild(sliderText);
+        updateLabel();
+
+        const positionCenter = this.createSVGElement('rect');
+        sliderGroup.appendChild(positionCenter);
+
+        const sliderPointer = this.createSVGElement('g');
+        sliderPointer.classList.add('sliderPointer');
+        const minPosition = () => this.polarToCartesian(0, 0, outerR, min.degree).matrixTransform(positionCenter.getScreenCTM());
+        const maxPosition = () => this.polarToCartesian(0, 0, outerR, max.degree).matrixTransform(positionCenter.getScreenCTM());
+        const cachedProperties = {
+          cx: 0,
+          cy: 0,
+          minPos: null,
+          maxPos: null
+        };
+        function pointerStartDrag(evt) {
+          evt.stopPropagation();
+          const centerRect = positionCenter.getBoundingClientRect();
+          cachedProperties.cx = centerRect.x;
+          cachedProperties.cy = centerRect.y;
+          cachedProperties.minPos = minPosition();
+          cachedProperties.maxPos = maxPosition();
+          sliderGroup.classList.add('selecting');
+          document.addEventListener('mousemove', pointerDragging);
+          document.addEventListener('mouseup', pointerStopDrag);
+        }
+        function pointerStopDrag(evt) {
+          evt.stopPropagation();
+          sliderGroup.classList.remove('selecting');
+          document.removeEventListener('mousemove', pointerDragging);
+          document.removeEventListener('mouseup', pointerStopDrag);
+        }
+        function pointerDragging(evt) {
+          evt.stopPropagation();
+          const relX = evt.clientX - cachedProperties.cx;
+          const relY = evt.clientY - cachedProperties.cy;
+          let degree = Math.atan2(relY, relX) * 180 / Math.PI + 90;
+          if (degree > 180) {
+            degree -= 360;
+          }
+          if (min.degree < degree && degree < max.degree) {
+            // do nothing
+          } else if (cachedProperties.minPos.x < evt.clientX && evt.clientX < cachedProperties.maxPos.x) {
+            const dx = (evt.clientX - cachedProperties.minPos.x) / (cachedProperties.maxPos.x - cachedProperties.minPos.x);
+            degree = 90 - Math.acos(dx * 2 - 1) * 180 / Math.PI;
+            if (degree < min.degree) degree = min.degree;
+            if (degree > max.degree) degree = max.degree;
+          } else {
+            return;
+          }
+          updatePointerUsingDegree(degree);
+        }
+        sliderPointer.addEventListener('mousedown', pointerStartDrag);
+        const sliderPointerWidth = 0.02;
+        const sliderPointerCircleRadius = 0.04;
+        const sliderPointerHeight = outerR - innerR;
+        const rotateTransform = this.addSVGTransform(sliderPointer, tf => tf.setRotate(valueToDegree(currentValue) - 180, 0, 0));
+        function updatePointerUsingDegree(degree) {
+          rotateTransform.setRotate(degree - 180, 0, 0);
+          currentValue = degreeToValue(degree);
+          sliderGroup.dataset['current'] = currentValue;
+          updateLabel();
+          console.log(currentValue);
+        }
+        this.addSVGTransform(sliderPointer, tf => tf.setTranslate(0, innerR));
+        const pointerLine = this.createSVGElement('line');
+        pointerLine.setAttribute('x1', 0);
+        pointerLine.setAttribute('x2', 0);
+        pointerLine.setAttribute('y1', 0);
+        pointerLine.setAttribute('y2', sliderPointerHeight);
+        sliderPointer.appendChild(pointerLine);
+        const pointerHandle1 = this.createSVGElement('rect');
+        const pointerHandle2 = this.createSVGElement('rect');
+        pointerHandle1.setAttribute('x', -sliderPointerWidth / 2);
+        pointerHandle2.setAttribute('x', -sliderPointerWidth / 2);
+        pointerHandle1.setAttribute('width', sliderPointerWidth);
+        pointerHandle2.setAttribute('width', sliderPointerWidth);
+        sliderPointer.appendChild(pointerHandle1);
+        sliderPointer.appendChild(pointerHandle2);
+        const pointerCircle = this.createSVGElement('circle');
+        pointerCircle.setAttribute('r', sliderPointerCircleRadius);
+        sliderPointer.appendChild(pointerCircle);
+        function updateCirclePosition(relativePos) {
+          const currentPos = sliderPointerCircleRadius + relativePos * (sliderPointerHeight - sliderPointerCircleRadius * 2);
+          pointerCircle.setAttribute('cy', currentPos);
+          pointerHandle1.setAttribute('height', currentPos - sliderPointerCircleRadius);
+          pointerHandle2.setAttribute('height', sliderPointerHeight - currentPos - sliderPointerCircleRadius);
+          pointerHandle2.setAttribute('y', currentPos + sliderPointerCircleRadius);
+        }
+        updateCirclePosition(1);
+        sliderGroup.appendChild(sliderPointer);
+      }
+
+      createMainMenu() {
+        const sectionDegree = 360 / this.entries.length;
+        this.entries.forEach((menuEntry, index) => {
+          this.entryMap[menuEntry.name] = menuEntry;
+          menuEntry.index = index;
+          menuEntry.degreeSize = sectionDegree;
+          menuEntry.degreeStart = index * sectionDegree;
+          menuEntry.degreeEnd = menuEntry.degreeStart + sectionDegree;
+          menuEntry.radii = this.radii;
+          this.createMenuEntry(this.menuMainElements, menuEntry);
+        });
+      }
+
+      createMenuEntry(menuGroup, menuEntry) {
         const menuElementGroup = this.createSVGElement('g');
         menuElementGroup.classList.add('menuEntry');
         menuElementGroup.dataset.entry = menuEntry.name;
         menuEntry.element = menuElementGroup;
-        this.addSVGTransform(menuElementGroup, tf => tf.setRotate(menuEntry.alphaStart, 0, 0));
+        this.addSVGTransform(menuElementGroup, tf => tf.setRotate(menuEntry.degreeStart, 0, 0));
         menuElementGroup.addEventListener('click', (evt) => {
           evt.menuEntry = menuEntry;
           evt.menu = this;
           menuEntry.eventHandler(evt);
         });
-        this.menuMainElements.appendChild(menuElementGroup);
+        menuGroup.appendChild(menuElementGroup);
 
         const hoverScaleGroup = this.createSVGElement('g');
         hoverScaleGroup.classList.add('hoverScaleGroup');
         menuElementGroup.appendChild(hoverScaleGroup);
-        
+
         const introScaleGroup = this.createSVGElement('g');
         introScaleGroup.classList.add('introScaleGroup');
         if (this.options.animated) {
-        introScaleGroup.style.transitionDelay = 30 + (20 * menuEntry.index) + 'ms';
+          introScaleGroup.style.transitionDelay = 30 + (20 * menuEntry.index) + 'ms';
         }
         menuEntry.introScaleGroup = introScaleGroup;
         hoverScaleGroup.appendChild(introScaleGroup);
@@ -242,8 +377,8 @@
         menuElementBG.id = menuEntry.name;
         menuElementBG.setAttribute('d', this.pathCircleSection(
           { x: 0, y: 0 }, menuEntry.radii,
-          - menuEntry.alphaSize / 2,
-          + menuEntry.alphaSize / 2
+          - menuEntry.degreeSize / 2,
+          + menuEntry.degreeSize / 2
         ));
         introScaleGroup.appendChild(menuElementBG);
 
@@ -254,7 +389,7 @@
         this.addSVGTransform(menuElementText, tf => tf.setRotate(-90, 0, 0));
         this.addSVGTransform(menuElementText, tf => tf.setTranslate(menuEntry.radii.center, 0));
         this.addSVGTransform(menuElementText, tf => tf.setTranslate(-textLength / 2, 0));
-        if (menuEntry.alphaStart >= 180) {
+        if (menuEntry.degreeStart >= 180) {
           this.addSVGTransform(menuElementText, tf => tf.setRotate(180, textLength / 2, 0));
         }
       }
@@ -266,7 +401,7 @@
         });
         document.addEventListener('mousedown', (evt) => {
           if (this.isOpen() && !this.svgContainer.contains(evt.target)) {
-            if(event.button != 2) {
+            if (event.button != 2) {
               evt.preventDefault();
               this.close();
             }
@@ -329,7 +464,7 @@
       openAt(x, y) {
         this.svgContainer.style.left = x;
         this.svgContainer.style.top = y;
-        if(!this.isOpen()) {
+        if (!this.isOpen()) {
           this.entries.forEach(entry => entry.introScaleGroup.classList.add('show'));
           this.setScale(0.95);
           this.svgContainer.style.visibility = 'visible';
@@ -343,10 +478,10 @@
       }
 
       pathCircleSection(center, radii, startAngle, endAngle) {
-        const startIn = polarToCartesian(center.x, center.y, radii.inner, endAngle);
-        const startOut = polarToCartesian(center.x, center.y, radii.outer, endAngle);
-        const endOut = polarToCartesian(center.x, center.y, radii.outer, startAngle);
-        const endIn = polarToCartesian(center.x, center.y, radii.inner, startAngle);
+        const startIn = this.polarToCartesian(center.x, center.y, radii.inner, endAngle);
+        const startOut = this.polarToCartesian(center.x, center.y, radii.outer, endAngle);
+        const endOut = this.polarToCartesian(center.x, center.y, radii.outer, startAngle);
+        const endIn = this.polarToCartesian(center.x, center.y, radii.inner, startAngle);
 
         const largeArcFlag = (endAngle - startAngle <= 180) ? 0 : 1;
 
@@ -364,25 +499,25 @@
     (window.contextMenu = new CircleMenu(
       document.getElementById('contextMenuContainer'),
       [
-      {
-        name: 'Alpha', eventHandler: (evt) => {
-          evt.menu.setColorAlpha(Math.random());
-        }
-      },
-      {
-        name: 'RGB', eventHandler: (evt) => {
-          evt.menu.setColorRGB(1, 0, 0);
-        }
-      },
-      // { name: 'YCbCr', eventHandler: (evt) => console.log(evt.menuEntry) },
-      { name: 'HSB', eventHandler: (evt) => console.log(evt.menuEntry) },
-      { name: 'HSL', eventHandler: (evt) => console.log(evt.menuEntry) },
-      { name: 'Recent', eventHandler: (evt) => console.log(evt.menuEntry) },
-      { name: 'Saved', eventHandler: (evt) => console.log(evt.menuEntry) },
-      {
-        name: 'Random', eventHandler: (evt) => {
-          evt.menu.setColorRandom();
-        }
+        {
+          name: 'Alpha', eventHandler: (evt) => {
+            evt.menu.setColorAlpha(Math.random());
+          }
+        },
+        {
+          name: 'RGB', eventHandler: (evt) => {
+            evt.menu.setColorRGB(1, 0, 0);
+          }
+        },
+        // { name: 'YCbCr', eventHandler: (evt) => console.log(evt.menuEntry) },
+        { name: 'HSB', eventHandler: (evt) => console.log(evt.menuEntry) },
+        { name: 'HSL', eventHandler: (evt) => console.log(evt.menuEntry) },
+        { name: 'Recent', eventHandler: (evt) => console.log(evt.menuEntry) },
+        { name: 'Saved', eventHandler: (evt) => console.log(evt.menuEntry) },
+        {
+          name: 'Random', eventHandler: (evt) => {
+            evt.menu.setColorRandom();
+          }
         }
       ],
       {
