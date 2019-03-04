@@ -14,7 +14,7 @@
       background-position: 0 0, 5px 0, 5px -5px, 0 5px;
     }
 
-    svg {
+    svg.context-menu {
       position: absolute;
       top: 0;
       left: 0;
@@ -26,63 +26,109 @@
       font-family: sans-serif;
       clip-path: circle(120px);
       clip-path: stroke-box;
+      shape-rendering: geometricPrecision;
+      color-rendering: optimizeQuality;
+      color-interpolation: sRGB;
+    }
+
+    svg.context-menu.animated {
       transition: visibility 500ms,
         left 40ms ease-out,
         top 40ms ease-out;
     }
 
-    svg .menuGroup {
+    svg.context-menu.animated .menuGroup {
       transition: transform 60ms ease-in;
     }
 
-    svg circle {
-      transition: fill 60ms linear;
+    svg.context-menu circle {
       stroke: black;
       stroke-width: 0.0025;
     }
 
-    svg .menuEntry {
+    svg.context-menu.animated circle {
+      transition: fill 60ms linear;
+    }
+
+    svg.context-menu .menuEntry {
       cursor: pointer;
     }
 
-    svg .menuEntry .hoverScaleGroup {
-      transition: transform 20ms ease-out;
+    svg.context-menu .menuEntry .hoverScaleGroup {
       transform: scale(1.00);
     }
 
-    svg .menuEntry:hover .hoverScaleGroup {
+    svg.context-menu.animated .menuEntry .hoverScaleGroup {
+      transition: transform 20ms ease-out;
+    }
+
+    svg.context-menu .menuEntry:hover .hoverScaleGroup {
       transform: scale(1.05);
     }
 
-    svg .menuEntry .introScaleGroup {
-      transition: transform 60ms linear;
+    svg.context-menu .menuEntry .introScaleGroup {
       transform: scale(0);
     }
 
-    svg .menuEntry .introScaleGroup.show {
+    svg.context-menu.animated .menuEntry .introScaleGroup {
+      transition: transform 60ms linear;
+    }
+
+    svg.context-menu .menuEntry .introScaleGroup.show {
       transform: scale(1);
     }
 
-    svg .menuEntry path {
-      transition: fill 80ms;
+    svg.context-menu .menuEntry path {
       fill: lightgray;
       stroke: black;
-      stroke-width: 0.0015;
+      stroke-width: 0.002;
     }
 
-    svg .menuEntry:hover path {
+    svg.context-menu .menuEntry.slider {
+      cursor: initial;
+    }
+
+    svg.context-menu .menuEntry.slider .sliderPointer {
+      cursor: grab;
+      pointer-events: bounding-box;
+    }
+    
+    svg.context-menu .menuEntry.slider.selecting .sliderPointer {
+      cursor: grabbing;
+    }
+
+    svg.context-menu .menuEntry.slider .sliderPointer line {
+      stroke: black;
+      stroke-width: 0.001;
+    }
+
+    svg.context-menu .menuEntry.slider .sliderPointer circle {
+      fill: none;
+      stroke-width: 0.02;
+    }
+
+    svg.context-menu.animated .menuEntry path {
+      transition: fill 80ms;
+    }
+
+    svg.context-menu .menuEntry:hover path,
+    svg.context-menu .menuEntry.menuEntry.slider.selecting path {
       fill: cornflowerblue;
     }
 
-    svg .menuEntry text {
+    svg.context-menu .menuEntry text {
       font-size: 0.08;
       font-weight: 500;
       fill: black;
       dominant-baseline: middle;
+    }
+
+    svg.context-menu.animated .menuEntry text {
       transition: font-weight 100ms linear, fill 80ms ease;
     }
 
-    svg .menuEntry:hover text {
+    svg.context-menu .menuEntry:hover text,
+    svg.context-menu .menuEntry.menuEntry.slider.selecting text {
       fill: white;
       font-weight: 600;
     }
@@ -105,11 +151,14 @@
     }
 
     class CircleMenu {
-      constructor(svgContainer, entries) {
+      constructor(svgContainer, entries, options = { animated: false }) {
         this.svgContainer = svgContainer;
+        svgContainer.setAttribute('vector-effect', 'non-scaling-stroke');
+        svgContainer.classList.add('context-menu');
         this.svgNS = this.svgContainer.namespaceURI;
         this.entries = entries;
         this.entryMap = {};
+        this.options = options;
         this.color = {
           'format': 'RGB',
           'data': {
@@ -183,8 +232,9 @@
         
         const introScaleGroup = this.createSVGElement('g');
         introScaleGroup.classList.add('introScaleGroup');
+        if (this.options.animated) {
         introScaleGroup.style.transitionDelay = 30 + (20 * menuEntry.index) + 'ms';
-        console.log(menuEntry.index, menuEntry.name, introScaleGroup.style.transitionDelay);
+        }
         menuEntry.introScaleGroup = introScaleGroup;
         hoverScaleGroup.appendChild(introScaleGroup);
 
@@ -311,7 +361,9 @@
       }
     }
 
-    (window.contextMenu = new CircleMenu(document.getElementById('contextMenuContainer'), [
+    (window.contextMenu = new CircleMenu(
+      document.getElementById('contextMenuContainer'),
+      [
       {
         name: 'Alpha', eventHandler: (evt) => {
           evt.menu.setColorAlpha(Math.random());
@@ -331,8 +383,12 @@
         name: 'Random', eventHandler: (evt) => {
           evt.menu.setColorRandom();
         }
-      },
-    ])).registerAsContextMenu();
+        }
+      ],
+      {
+        animated: false
+      }
+    )).registerAsContextMenu();
   </script>
 </body>
 
