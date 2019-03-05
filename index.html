@@ -41,6 +41,10 @@
       transition: transform 60ms ease-in;
     }
 
+    svg.radialContextMenu .acceptButton {
+      fill: rgba(0, 0, 0, 0.4);
+    }
+
     svg.radialContextMenu text {
       font-size: 0.08;
       font-weight: 500;
@@ -52,6 +56,18 @@
       fill: none;
       stroke: black;
       stroke-width: 0.004;
+    }
+
+    svg.radialContextMenu .colorPreview {
+      pointer-events: visibleFill;
+    }
+
+    svg.radialContextMenu .colorPreview text {
+      font-weight: 600;
+    }
+
+    svg.radialContextMenu.animated .colorPreview text {
+      transition: fill 100ms ease-in-out;
     }
 
     svg.radialContextMenu.animated .colorPreview {
@@ -160,30 +176,62 @@
         this.entryMap = {};
         this.options = options;
         this.color = {
-          'format': 'RGB',
-          'data': {
-            'r': 0,
-            'g': 0,
-            'b': 0
+          current: {
+            format: 'RGB',
+            data: {
+              r: 0,
+              g: 0,
+              b: 0
             },
-          'alpha': 1
+            alpha: 1
+          },
+          new: {
+            format: 'RGB',
+            data: {
+              r: 0,
+              g: 0,
+              b: 0
+            },
+            alpha: 1
+          }
         };
-        this.radii = { inner: 0.1, outer: 0.5, center: 0.3 };
+        this.radii = { innest: 0.08, inner: 0.1, outer: 0.5, center: 0.3 };
 
         this.svgContainer.style.visibility = 'hidden';
+        if(this.options.animated) {
+          this.svgContainer.classList.add('animated');
+        }
 
         this.menuContainer = this.createSVGElement('g');
         this.addSVGTransform(this.menuContainer, tf => tf.setTranslate(0.5, 0.5));
-        this.scaleTransformation = this.addSVGTransform(this.menuContainer, tf => tf);
+        this.scaleTransformation = this.addSVGTransform(this.menuContainer);
         this.menuContainer.classList.add('menuGroup');
         svgContainer.appendChild(this.menuContainer);
 
-        this.colorPreview = this.createSVGElement('circle');
-        this.colorPreview.setAttribute('r', this.radii.outer);
-        this.addSVGTransform(this.colorPreview, tf => tf.setScale(1.05, 1.05));
-        this.colorPreview.addEventListener('click', () => this.close());
-        this.menuContainer.appendChild(this.colorPreview);
-        this.updateColor();
+        this.colorPreviewGroup = this.createSVGElement('g');
+        this.colorPreviewGroup.classList.add('colorPreview');
+        this.addSVGTransform(this.colorPreviewGroup, tf => tf.setScale(1.05, 1.05));
+        const colorPreviewBorder = this.createSVGElement('circle');
+        colorPreviewBorder.setAttribute('r', this.radii.outer);
+        this.colorPreviewGroup.appendChild(colorPreviewBorder);
+        this.colorPreviewGroup.addEventListener('click', () => this.isInSubMenu() && this.leaveSubMenu());
+        this.colorPreviewCurrent = this.createSVGElement('path');
+        this.colorPreviewNew = this.createSVGElement('path');
+        this.colorPreviewCurrent.setAttribute('d', 'M0,-0.5 a0.5,0.5 0 1 0 0,1');
+        this.colorPreviewNew.setAttribute('d', 'M0,0.5 a0.5,0.5 0 1 0 0,-1');
+        this.colorPreviewGroup.appendChild(this.colorPreviewCurrent);
+        this.colorPreviewGroup.appendChild(this.colorPreviewNew);
+        this.colorPreviewCurrentText = this.createSVGElement('text');
+        this.colorPreviewNewText = this.createSVGElement('text');
+        this.colorPreviewCurrentText.textContent = 'old';
+        this.colorPreviewNewText.textContent = 'new';
+        this.colorPreviewCurrentText.setAttribute('x', -this.radii.center);
+        this.colorPreviewNewText.setAttribute('x', this.radii.center);
+        this.colorPreviewGroup.appendChild(this.colorPreviewCurrentText);
+        this.colorPreviewGroup.appendChild(this.colorPreviewNewText);
+        this.menuContainer.appendChild(this.colorPreviewGroup);
+        this.updateNewColor();
+        this.updateCurrentColor();
 
         this.menuMainElements = this.createSVGElement('g');
         this.menuMainElements.classList.add('menuMainElementGroup');
@@ -193,17 +241,22 @@
         this.menuSecondaryElements.classList.add('menuSecondaryElementGroup');
         this.menuContainer.appendChild(this.menuSecondaryElements);
 
-        this.createMainMenu();
-        this.createSlider(this.menuSecondaryElements, { value: 0, degree: -60 }, { value: 1, degree: +60 }, 0.25);
+        this.acceptButton = this.createSVGElement('circle');
+        this.acceptButton.classList.add('acceptButton');
+        this.acceptButton.setAttribute('r', this.radii.innest);
+        this.acceptButton.addEventListener('click', () => this.close(true));
+        this.menuContainer.appendChild(this.acceptButton);
+
+        this.createMainMenu(this.radii);
         this.close();
       }
 
       createSVGElement(tagName) {
         return document.createElementNS(this.svgNS, tagName);
       }
-      addSVGTransform(element, transformationSetter) {
-        const transform = this.svgContainer.createSVGTransform();
-        transformationSetter(transform);
+      addSVGTransform(element, transformationSetter = null, transformation = null) {
+        const transform = transformation ? transformation : this.svgContainer.createSVGTransform();
+        (transformationSetter || (tf => null))(transform);
         element.transform.baseVal.appendItem(transform);
         return transform;
       }
@@ -216,16 +269,36 @@
         return point;
       }
 
-      createSlider(menuGroup, min, max, currentValue) {
+      createSlider(menuGroup, sliderConfig) {
+        const {min, max, radii} = sliderConfig;
+
         const sliderGroup = this.createSVGElement('g');
         sliderGroup.classList.add('menuEntry');
         sliderGroup.classList.add('slider');
         sliderGroup.dataset['min'] = min.value;
         sliderGroup.dataset['max'] = max.value;
-        sliderGroup.dataset['current'] = currentValue;
+        sliderGroup.currentValue = sliderConfig.value || ((min.value + max.value) / 2);
+        sliderGroup.dataset['current'] = sliderGroup.currentValue;
+        if (sliderConfig.updateHandler) {
+          sliderGroup.addEventListener('valueUpdate', sliderConfig.updateHandler);
+        }
+        sliderGroup.refreshValue = sliderConfig.colorComponentValue
+          ? () => sliderGroup.updateValue(sliderConfig.colorComponentValue(this))
+          : () => null;
+        sliderGroup.updateValue = (newValue) => {
+          const evt = new CustomEvent('valueUpdate');
+          evt.menu = this;
+          evt.oldValue = sliderGroup.currentValue;
+          sliderGroup.currentValue = newValue;
+          evt.newValue = sliderGroup.currentValue;
+          sliderGroup.dataset['current'] = sliderGroup.currentValue;
+          sliderGroup.dispatchEvent(evt);
+          updateLabel();
+          rotateTransform.setRotate(valueToDegree(newValue) - 180, 0, 0);
+        };
         menuGroup.appendChild(sliderGroup);
-        const innerR = this.radii.inner;
-        const outerR = this.radii.outer;
+        const innerR = radii.inner;
+        const outerR = radii.outer;
 
         const valueToDegree = (value) => {
           const percentage = (value - min.value) / (max.value - min.value);
@@ -238,20 +311,15 @@
 
         const sliderBG = this.createSVGElement('path');
         sliderBG.setAttribute('d', this.pathCircleSection(
-          { x: 0, y: 0 }, this.radii,
+          { x: 0, y: 0 }, radii,
           min.degree, max.degree
         ));
         sliderGroup.appendChild(sliderBG);
 
         const sliderText = this.createSVGElement('text');
-        sliderText.setAttribute('y', - this.radii.center);
-        const updateLabel = () => {
-          sliderText.textContent = currentValue.toFixed(2);
-          const textLength = sliderText.getComputedTextLength();
-          sliderText.setAttribute('x', -textLength / 2);
-        };
+        sliderText.setAttribute('y', - radii.center);
+        const updateLabel = () => sliderText.textContent = sliderGroup.currentValue.toFixed(2);
         sliderGroup.appendChild(sliderText);
-        updateLabel();
 
         const positionCenter = this.createSVGElement('rect');
         sliderGroup.appendChild(positionCenter);
@@ -266,62 +334,58 @@
           minPos: null,
           maxPos: null
         };
-        function pointerStartDrag(evt) {
-          evt.stopPropagation();
+        function refreshCache() {
           const centerRect = positionCenter.getBoundingClientRect();
           cachedProperties.cx = centerRect.x;
           cachedProperties.cy = centerRect.y;
           cachedProperties.minPos = minPosition();
           cachedProperties.maxPos = maxPosition();
+        }
+        function pointerStartDrag(evt) {
+          evt.stopPropagation();
+          refreshCache();
           sliderGroup.classList.add('selecting');
           document.addEventListener('mousemove', pointerDragging);
           document.addEventListener('mouseup', pointerStopDrag);
+          setPointerToPosition(evt.clientX, evt.clientY);
         }
         function pointerStopDrag(evt) {
           evt.stopPropagation();
           sliderGroup.classList.remove('selecting');
           document.removeEventListener('mousemove', pointerDragging);
           document.removeEventListener('mouseup', pointerStopDrag);
+          setPointerToPosition(evt.clientX, evt.clientY);
         }
         function pointerDragging(evt) {
           evt.stopPropagation();
-          const relX = evt.clientX - cachedProperties.cx;
-          const relY = evt.clientY - cachedProperties.cy;
+          setPointerToPosition(evt.clientX, evt.clientY);
+        }
+        sliderBG.addEventListener('mousedown', pointerStartDrag);
+        sliderPointer.addEventListener('mousedown', pointerStartDrag);
+        function setPointerToPosition(clientX, clientY) {
+          const relX = clientX - cachedProperties.cx;
+          const relY = clientY - cachedProperties.cy;
           let degree = Math.atan2(relY, relX) * 180 / Math.PI + 90;
           if (degree > 180) {
             degree -= 360;
           }
           if (min.degree < degree && degree < max.degree) {
             // do nothing
-          } else if (cachedProperties.minPos.x < evt.clientX && evt.clientX < cachedProperties.maxPos.x) {
-            const dx = (evt.clientX - cachedProperties.minPos.x) / (cachedProperties.maxPos.x - cachedProperties.minPos.x);
+          } else if (cachedProperties.minPos.x < clientX && clientX < cachedProperties.maxPos.x) {
+            const dx = (clientX - cachedProperties.minPos.x) / (cachedProperties.maxPos.x - cachedProperties.minPos.x);
             degree = 90 - Math.acos(dx * 2 - 1) * 180 / Math.PI;
             if (degree < min.degree) degree = min.degree;
             if (degree > max.degree) degree = max.degree;
           } else {
             return;
           }
-          updatePointerUsingDegree(degree);
+          sliderGroup.updateValue(degreeToValue(degree));
         }
-        sliderPointer.addEventListener('mousedown', pointerStartDrag);
         const sliderPointerWidth = 0.02;
         const sliderPointerCircleRadius = 0.04;
         const sliderPointerHeight = outerR - innerR;
-        const rotateTransform = this.addSVGTransform(sliderPointer, tf => tf.setRotate(valueToDegree(currentValue) - 180, 0, 0));
-        function updatePointerUsingDegree(degree) {
-          rotateTransform.setRotate(degree - 180, 0, 0);
-          currentValue = degreeToValue(degree);
-          sliderGroup.dataset['current'] = currentValue;
-          updateLabel();
-          console.log(currentValue);
-        }
+        const rotateTransform = this.addSVGTransform(sliderPointer);
         this.addSVGTransform(sliderPointer, tf => tf.setTranslate(0, innerR));
-        const pointerLine = this.createSVGElement('line');
-        pointerLine.setAttribute('x1', 0);
-        pointerLine.setAttribute('x2', 0);
-        pointerLine.setAttribute('y1', 0);
-        pointerLine.setAttribute('y2', sliderPointerHeight);
-        sliderPointer.appendChild(pointerLine);
         const pointerHandle1 = this.createSVGElement('rect');
         const pointerHandle2 = this.createSVGElement('rect');
         pointerHandle1.setAttribute('x', -sliderPointerWidth / 2);
@@ -330,6 +394,12 @@
         pointerHandle2.setAttribute('width', sliderPointerWidth);
         sliderPointer.appendChild(pointerHandle1);
         sliderPointer.appendChild(pointerHandle2);
+        const pointerLine = this.createSVGElement('line');
+        pointerLine.setAttribute('x1', 0);
+        pointerLine.setAttribute('x2', 0);
+        pointerLine.setAttribute('y1', 0);
+        pointerLine.setAttribute('y2', sliderPointerHeight);
+        sliderPointer.appendChild(pointerLine);
         const pointerCircle = this.createSVGElement('circle');
         pointerCircle.setAttribute('r', sliderPointerCircleRadius);
         sliderPointer.appendChild(pointerCircle);
@@ -342,19 +412,62 @@
         }
         updateCirclePosition(1);
         sliderGroup.appendChild(sliderPointer);
+        sliderGroup.refreshValue();
+        return sliderGroup;
       }
 
-      createMainMenu() {
+      createMainMenu(radii) {
         const sectionDegree = 360 / this.entries.length;
+        this.subMenus = {};
         this.entries.forEach((menuEntry, index) => {
           this.entryMap[menuEntry.name] = menuEntry;
           menuEntry.index = index;
           menuEntry.degreeSize = sectionDegree;
           menuEntry.degreeStart = index * sectionDegree;
           menuEntry.degreeEnd = menuEntry.degreeStart + sectionDegree;
-          menuEntry.radii = this.radii;
+          menuEntry.radii = radii;
           this.createMenuEntry(this.menuMainElements, menuEntry);
+          if (menuEntry.subMenu && menuEntry.subMenu.length) {
+            this.createSubMenu(menuEntry);
+          }
         });
+      }
+
+      createSubMenu(menuEntry) {
+        const subMenuGroup = this.createSVGElement('g');
+        subMenuGroup.sliders = [];
+        subMenuGroup.updateValues = () => {
+          subMenuGroup.sliders.forEach(slider => slider.refreshValue());
+        };
+        menuEntry.subMenu.forEach(entry => {
+          switch (entry.type) {
+            case 'slider':
+              entry.radii = this.radii;
+              subMenuGroup.sliders.push(this.createSlider(subMenuGroup, entry));
+              break;
+          }
+        });
+        this.subMenus[menuEntry.name] = subMenuGroup;
+        this.leaveSubMenu();
+      }
+      isInSubMenu() {
+        return this.menuSecondaryElements.style.visibility === "visible";
+      }
+      activateSubMenu(menuEntry) {
+        const subMenu = this.subMenus[menuEntry.name];
+        if (subMenu) {
+          while (this.menuSecondaryElements.firstChild) {
+            this.menuSecondaryElements.removeChild(this.menuSecondaryElements.firstChild);
+          }
+          this.menuSecondaryElements.appendChild(subMenu);
+          subMenu.updateValues();
+        }
+        this.menuMainElements.style.visibility = "hidden";
+        this.menuSecondaryElements.style.visibility = "visible";
+      }
+      leaveSubMenu() {
+        this.menuMainElements.style.visibility = "visible";
+        this.menuSecondaryElements.style.visibility = "hidden";
       }
 
       createMenuEntry(menuGroup, menuEntry) {
@@ -366,7 +479,11 @@
         menuElementGroup.addEventListener('click', (evt) => {
           evt.menuEntry = menuEntry;
           evt.menu = this;
+          if (menuEntry.subMenu) {
+            this.activateSubMenu(menuEntry);
+          } else if (menuEntry.eventHandler) {
             menuEntry.eventHandler(evt);
+          }
         });
         menuGroup.appendChild(menuElementGroup);
 
@@ -376,9 +493,7 @@
 
         const introScaleGroup = this.createSVGElement('g');
         introScaleGroup.classList.add('introScaleGroup');
-        if (this.options.animated) {
         introScaleGroup.style.transitionDelay = 30 + (20 * menuEntry.index) + 'ms';
-        }
         menuEntry.introScaleGroup = introScaleGroup;
         hoverScaleGroup.appendChild(introScaleGroup);
 
@@ -393,14 +508,14 @@
 
         const menuElementText = this.createSVGElement('text');
         menuElementText.textContent = menuEntry.name;
-        introScaleGroup.appendChild(menuElementText);
-        const textLength = menuElementText.getComputedTextLength();
         this.addSVGTransform(menuElementText, tf => tf.setRotate(-90, 0, 0));
         this.addSVGTransform(menuElementText, tf => tf.setTranslate(menuEntry.radii.center, 0));
-        this.addSVGTransform(menuElementText, tf => tf.setTranslate(-textLength / 2, 0));
         if (menuEntry.degreeStart >= 180) {
-          this.addSVGTransform(menuElementText, tf => tf.setRotate(180, textLength / 2, 0));
+          this.addSVGTransform(menuElementText, tf => tf.setRotate(180, 0, 0));
         }
+        introScaleGroup.appendChild(menuElementText);
+
+        return menuElementGroup;
       }
 
       registerAsContextMenu() {
@@ -419,7 +534,7 @@
         document.addEventListener('keyup', (evt) => {
           if (this.isOpen() && evt.key == 'Escape') {
             evt.preventDefault();
-            this.close();
+            this.closeLayer();
           }
         });
       }
@@ -429,33 +544,56 @@
       }
 
       get currentColor() {
-        return this.colorPreview.fill;
+        return this.colorPreviewCurrent.fill;
+      }
+      get newColor() {
+        return this.colorPreviewNew.fill;
+      }
+      updateCurrentColor() {
+        this.color.current = JSON.parse(JSON.stringify(this.color.new));
+        this.colorPreviewCurrent.setAttribute('fill', this.buildColorValue(this.color.current));
+        this.colorPreviewCurrentText.setAttribute('fill', this.isBrightColor(this.color.current) ? 'black' : 'white');
+      }
+      updateNewColor() {
+        this.colorPreviewNew.setAttribute('fill', this.buildColorValue(this.color.new));
+        this.colorPreviewNewText.setAttribute('fill', this.isBrightColor(this.color.new) ? 'black' : 'white');
+      }
+      revertNewColor() {
+        this.color.new = JSON.parse(JSON.stringify(this.color.current));
+        this.updateNewColor();
+      }
+      buildColorValue(colorConfig) {
+        switch (colorConfig.format) {
+          case 'RGB':
+            return `rgba(${colorConfig.data.r * 255}, ${colorConfig.data.g * 255}, ${colorConfig.data.b * 255}, ${colorConfig.alpha})`;
+          default:
+            return 'black';
+        }
       }
 
-      updateColor() {
-        let colorString;
-        switch (this.color.format) {
-          case 'RGB':
-            colorString = `rgba(${this.color.data.r * 255}, ${this.color.data.g * 255}, ${this.color.data.b * 255}, ${this.color.alpha})`;
-            break;
+      isBrightColor(colorConfig) {
+        switch (colorConfig.format) {
+          case 'RGB': return (colorConfig.data.r + colorConfig.data.g + colorConfig.data.b) > 1.5 || colorConfig.alpha < 0.25;
+          default: return false;
         }
-        console.log(colorString);
-        this.colorPreview.setAttribute('fill', colorString);
       }
 
       setColorAlpha(alpha) {
-        this.color.alpha = alpha;
-        this.updateColor();
+        this.color.new.alpha = alpha;
+        this.updateNewColor();
+      }
+      getColorAlpha() {
+        return this.color.new.alpha;
       }
 
       setColorRGB(r, g, b) {
-        this.color.format = 'RGB';
-        this.color.data = {
+        this.color.new.format = 'RGB';
+        this.color.new.data = {
           'r': r,
           'g': g,
           'b': b
         };
-        this.updateColor();
+        this.updateNewColor();
       }
 
       setColorRandom() {
@@ -480,7 +618,21 @@
         }
       }
 
-      close() {
+      closeLayer() {
+        if (this.isInSubMenu()) {
+          this.leaveSubMenu();
+        } else {
+          this.close();
+        }
+      }
+
+      close(save = false) {
+        this.leaveSubMenu();
+        if(save) {
+          this.updateCurrentColor();
+        } else {
+          this.revertNewColor();
+        }
         this.svgContainer.style.visibility = 'hidden';
         this.setScale(0.0);
         this.entries.forEach(entry => entry.introScaleGroup.classList.remove('show'));
@@ -509,9 +661,17 @@
       document.getElementById('contextMenuContainer'),
       [
         {
-          name: 'Alpha', eventHandler: (evt) => {
-            evt.menu.setColorAlpha(Math.random());
-          }
+          name: 'Alpha',
+          subMenu: [
+            {
+              type: 'slider',
+              min: { value: 0, degree: -60 },
+              max: { value: 1, degree: +60 },
+              value: 1,
+              updateHandler: evt => evt.menu.setColorAlpha(evt.newValue),
+              colorComponentValue: menu => menu.getColorAlpha()
+            }
+          ]
         },
         {
           name: 'RGB', eventHandler: (evt) => {
