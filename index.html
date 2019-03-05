@@ -41,8 +41,30 @@
       transition: transform 60ms ease-in;
     }
 
-    svg.radialContextMenu .acceptButton {
-      fill: rgba(0, 0, 0, 0.4);
+    svg.radialContextMenu .acceptButton:hover {
+      cursor: pointer;
+    }
+
+    svg.radialContextMenu .acceptButton circle {
+      fill: none;
+      stroke: black;
+    }
+
+    svg.radialContextMenu .acceptButton:hover circle {
+      stroke: white;
+    }
+
+    svg.radialContextMenu .acceptButton text {
+      fill: cornflowerblue;
+      font-size: 0.092;
+      font-weight: 700;
+      stroke: black;
+      stroke-width: 0.003;
+    }
+
+    svg.radialContextMenu .acceptButton:hover text {
+      stroke: white;
+      stroke-width: 0.0015;
     }
 
     svg.radialContextMenu text {
@@ -55,7 +77,7 @@
     svg.radialContextMenu circle {
       fill: none;
       stroke: black;
-      stroke-width: 0.004;
+      stroke-width: 0.005;
     }
 
     svg.radialContextMenu .colorPreview {
@@ -111,13 +133,17 @@
     }
 
     svg.radialContextMenu .menuEntry path {
-      fill: lightgray;
+      fill: #D3D3D3;
       stroke: black;
-      stroke-width: 0.002;
+      stroke-width: 0.005;
     }
 
     svg.radialContextMenu .menuEntry.slider {
       cursor: initial;
+    }
+
+    svg.radialContextMenu .menuEntry.slider text {
+      pointer-events: none;
     }
 
     svg.radialContextMenu .menuEntry.slider .sliderPointer {
@@ -166,6 +192,20 @@
   <script>
     "Strict mode";
 
+    // from https://stackoverflow.com/questions/201183/how-to-determine-equality-for-two-javascript-objects
+    function deepEqual(x, y) {
+      const ok = Object.keys, tx = typeof x, ty = typeof y;
+      return x && y && tx === 'object' && tx === ty ? (
+        ok(x).length === ok(y).length &&
+        ok(x).every(key => deepEqual(x[key], y[key]))
+      ) : (x === y);
+    }
+
+    function path4halfCircle(r, left = true) {
+      const f = left ? -1 : 1;
+      return `M0,${f * r} a${r},${r} 0 1 0 0,${f * r * -2}`;
+    }
+
     class CircleMenu {
       constructor(svgContainer, entries, options = { animated: false }) {
         this.svgContainer = svgContainer;
@@ -175,6 +215,7 @@
         this.entries = entries;
         this.entryMap = {};
         this.options = options;
+        this.changed = false;
         this.color = {
           current: {
             format: 'RGB',
@@ -195,12 +236,14 @@
             alpha: 1
           }
         };
-        this.radii = { innest: 0.08, inner: 0.1, outer: 0.5, center: 0.3 };
+        this.radii = { innest: 0.1, inner: 0.12, outer: 0.5, center: 0.31 };
 
         this.svgContainer.style.visibility = 'hidden';
-        if(this.options.animated) {
+        if (this.options.animated) {
           this.svgContainer.classList.add('animated');
         }
+        this.currentColorElements = [];
+        this.newColorElements = [];
 
         this.menuContainer = this.createSVGElement('g');
         this.addSVGTransform(this.menuContainer, tf => tf.setTranslate(0.5, 0.5));
@@ -208,30 +251,36 @@
         this.menuContainer.classList.add('menuGroup');
         svgContainer.appendChild(this.menuContainer);
 
-        this.colorPreviewGroup = this.createSVGElement('g');
-        this.colorPreviewGroup.classList.add('colorPreview');
-        this.addSVGTransform(this.colorPreviewGroup, tf => tf.setScale(1.05, 1.05));
+        const colorPreviewGroup = this.createSVGElement('g');
+        colorPreviewGroup.classList.add('colorPreview');
+        this.addSVGTransform(colorPreviewGroup, tf => tf.setScale(1.05, 1.05));
         const colorPreviewBorder = this.createSVGElement('circle');
         colorPreviewBorder.setAttribute('r', this.radii.outer);
-        this.colorPreviewGroup.appendChild(colorPreviewBorder);
-        this.colorPreviewGroup.addEventListener('click', () => this.isInSubMenu() && this.leaveSubMenu());
-        this.colorPreviewCurrent = this.createSVGElement('path');
-        this.colorPreviewNew = this.createSVGElement('path');
-        this.colorPreviewCurrent.setAttribute('d', 'M0,-0.5 a0.5,0.5 0 1 0 0,1');
-        this.colorPreviewNew.setAttribute('d', 'M0,0.5 a0.5,0.5 0 1 0 0,-1');
-        this.colorPreviewGroup.appendChild(this.colorPreviewCurrent);
-        this.colorPreviewGroup.appendChild(this.colorPreviewNew);
-        this.colorPreviewCurrentText = this.createSVGElement('text');
-        this.colorPreviewNewText = this.createSVGElement('text');
-        this.colorPreviewCurrentText.textContent = 'old';
-        this.colorPreviewNewText.textContent = 'new';
-        this.colorPreviewCurrentText.setAttribute('x', -this.radii.center);
-        this.colorPreviewNewText.setAttribute('x', this.radii.center);
-        this.colorPreviewGroup.appendChild(this.colorPreviewCurrentText);
-        this.colorPreviewGroup.appendChild(this.colorPreviewNewText);
-        this.menuContainer.appendChild(this.colorPreviewGroup);
-        this.updateNewColor();
-        this.updateCurrentColor();
+        colorPreviewGroup.appendChild(colorPreviewBorder);
+        colorPreviewGroup.addEventListener('click', () => this.isInSubMenu() && this.leaveSubMenu());
+        const colorPreviewCurrentBG = this.createSVGElement('path');
+        const colorPreviewNewBG = this.createSVGElement('path');
+        this.currentColorElements.push(colorPreviewCurrentBG);
+        this.newColorElements.push(colorPreviewNewBG);
+        colorPreviewCurrentBG.update = () => colorPreviewCurrentBG.setAttribute('fill', this.buildColorValue(this.color.current));
+        colorPreviewNewBG.update = () => colorPreviewNewBG.setAttribute('fill', this.buildColorValue(this.color.new));
+        colorPreviewCurrentBG.setAttribute('d', path4halfCircle(0.5));
+        colorPreviewNewBG.setAttribute('d', path4halfCircle(0.5, false));
+        colorPreviewGroup.appendChild(colorPreviewCurrentBG);
+        colorPreviewGroup.appendChild(colorPreviewNewBG);
+        const colorPreviewCurrentText = this.createSVGElement('text');
+        const colorPreviewNewText = this.createSVGElement('text');
+        this.currentColorElements.push(colorPreviewCurrentText);
+        this.newColorElements.push(colorPreviewNewText);
+        colorPreviewCurrentText.update = () => colorPreviewCurrentText.setAttribute('fill', this.brightnessAdaptedColor(this.color.current));
+        colorPreviewNewText.update = () => colorPreviewNewText.setAttribute('fill', this.brightnessAdaptedColor(this.color.new));
+        colorPreviewCurrentText.textContent = 'old';
+        colorPreviewNewText.textContent = 'new';
+        colorPreviewCurrentText.setAttribute('x', -this.radii.center);
+        colorPreviewNewText.setAttribute('x', this.radii.center);
+        colorPreviewGroup.appendChild(colorPreviewCurrentText);
+        colorPreviewGroup.appendChild(colorPreviewNewText);
+        this.menuContainer.appendChild(colorPreviewGroup);
 
         this.menuMainElements = this.createSVGElement('g');
         this.menuMainElements.classList.add('menuMainElementGroup');
@@ -241,13 +290,31 @@
         this.menuSecondaryElements.classList.add('menuSecondaryElementGroup');
         this.menuContainer.appendChild(this.menuSecondaryElements);
 
-        this.acceptButton = this.createSVGElement('circle');
+        this.acceptButton = this.createSVGElement('g');
         this.acceptButton.classList.add('acceptButton');
-        this.acceptButton.setAttribute('r', this.radii.innest);
         this.acceptButton.addEventListener('click', () => this.close(true));
+        this.acceptButton.update = () => this.acceptButton.style.visibility = this.changed ? 'visible' : 'hidden';
+        const btnCircle = this.createSVGElement('circle');
+        btnCircle.setAttribute('r', this.radii.innest);
+        this.acceptButton.appendChild(btnCircle);
+        const btnCurrentSide = this.createSVGElement('path');
+        const btnNewSide = this.createSVGElement('path');
+        this.currentColorElements.push(btnCurrentSide);
+        this.newColorElements.push(btnNewSide);
+        btnCurrentSide.update = () => btnCurrentSide.setAttribute('fill', this.brightnessAdaptedColor(this.color.current, '#000A', '#FFFA'));
+        btnNewSide.update = () => btnNewSide.setAttribute('fill', this.brightnessAdaptedColor(this.color.new, '#000A', '#FFFA'));
+        btnCurrentSide.setAttribute('d', path4halfCircle(this.radii.innest));
+        btnNewSide.setAttribute('d', path4halfCircle(this.radii.innest, false));
+        this.acceptButton.appendChild(btnCurrentSide);
+        this.acceptButton.appendChild(btnNewSide);
+        const btnText = this.createSVGElement('text');
+        btnText.textContent = 'set';
+        this.acceptButton.appendChild(btnText);
         this.menuContainer.appendChild(this.acceptButton);
 
         this.createMainMenu(this.radii);
+        this.updateCurrentColor();
+        this.revertNewColor();
         this.close();
       }
 
@@ -270,7 +337,7 @@
       }
 
       createSlider(menuGroup, sliderConfig) {
-        const {min, max, radii} = sliderConfig;
+        const { min, max, radii } = sliderConfig;
 
         const sliderGroup = this.createSVGElement('g');
         sliderGroup.classList.add('menuEntry');
@@ -551,16 +618,22 @@
       }
       updateCurrentColor() {
         this.color.current = JSON.parse(JSON.stringify(this.color.new));
-        this.colorPreviewCurrent.setAttribute('fill', this.buildColorValue(this.color.current));
-        this.colorPreviewCurrentText.setAttribute('fill', this.isBrightColor(this.color.current) ? 'black' : 'white');
+        this.currentColorElements.forEach(elem => elem.update());
+        this.changed = false;
+        this.acceptButton.update();
       }
       updateNewColor() {
-        this.colorPreviewNew.setAttribute('fill', this.buildColorValue(this.color.new));
-        this.colorPreviewNewText.setAttribute('fill', this.isBrightColor(this.color.new) ? 'black' : 'white');
+        this.newColorElements.forEach(elem => elem.update());
+        if (!deepEqual(this.color.new, this.color.current)) {
+          this.changed = true;
+          this.acceptButton.update();
+        }
       }
       revertNewColor() {
         this.color.new = JSON.parse(JSON.stringify(this.color.current));
         this.updateNewColor();
+        this.changed = false;
+        this.acceptButton.update();
       }
       buildColorValue(colorConfig) {
         switch (colorConfig.format) {
@@ -573,9 +646,12 @@
 
       isBrightColor(colorConfig) {
         switch (colorConfig.format) {
-          case 'RGB': return (colorConfig.data.r + colorConfig.data.g + colorConfig.data.b) > 1.5 || colorConfig.alpha < 0.25;
+          case 'RGB': return (colorConfig.data.r + colorConfig.data.g + colorConfig.data.b) > 1.5 || colorConfig.alpha < 0.33;
           default: return false;
         }
+      }
+      brightnessAdaptedColor(colorConfig, darkValue = 'black', brightValue = 'white') {
+        return this.isBrightColor(colorConfig) ? darkValue : brightValue;
       }
 
       setColorAlpha(alpha) {
@@ -628,7 +704,7 @@
 
       close(save = false) {
         this.leaveSubMenu();
-        if(save) {
+        if (save) {
           this.updateCurrentColor();
         } else {
           this.revertNewColor();
