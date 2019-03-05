@@ -58,13 +58,14 @@
       fill: cornflowerblue;
       font-size: 0.092;
       font-weight: 700;
-      stroke: black;
-      stroke-width: 0.003;
+      stroke: white;
+      stroke-width: 0.001;
     }
 
     svg.radialContextMenu .acceptButton:hover text {
-      stroke: white;
-      stroke-width: 0.0015;
+      fill: white;
+      stroke: black;
+      stroke-width: 0.0025;
     }
 
     svg.radialContextMenu text {
@@ -754,9 +755,15 @@
             evt.menu.setColorRGB(1, 0, 0);
           }
         },
-        // { name: 'YCbCr', eventHandler: (evt) => console.log(evt.menuEntry) },
         { name: 'HSB', eventHandler: (evt) => console.log(evt.menuEntry) },
+        { name: 'HWB', eventHandler: (evt) => console.log(evt.menuEntry) },
+        { name: 'YCbCr', eventHandler: (evt) => console.log(evt.menuEntry) },
+        { name: 'CMYK', eventHandler: (evt) => console.log(evt.menuEntry) },
         { name: 'HSL', eventHandler: (evt) => console.log(evt.menuEntry) },
+      // brighter
+      // darker
+      // save
+      // named
         { name: 'Recent', eventHandler: (evt) => console.log(evt.menuEntry) },
         { name: 'Saved', eventHandler: (evt) => console.log(evt.menuEntry) },
         {
