@@ -553,6 +553,10 @@
             menuEntry.eventHandler(evt);
           }
         });
+        if(menuEntry.style) {
+          Object.keys(menuEntry.style)
+            .forEach(styleKey => menuElementGroup.style.setProperty(styleKey, menuEntry.style[styleKey]));
+        }
         menuGroup.appendChild(menuElementGroup);
 
         const hoverScaleGroup = this.createSVGElement('g');
@@ -734,6 +738,12 @@
       }
     }
 
+    function notYetImplemented(featureName, ...objs) {
+      const msg = `The feature '${featureName}' is currently not supported.`;
+      console.log(msg, objs);
+      alert(msg);
+    }
+
     (window.contextMenu = new CircleMenu(
       document.getElementById('contextMenuContainer'),
       [
@@ -755,17 +765,14 @@
             evt.menu.setColorRGB(1, 0, 0);
           }
         },
-        { name: 'HSB', eventHandler: (evt) => console.log(evt.menuEntry) },
-        { name: 'HWB', eventHandler: (evt) => console.log(evt.menuEntry) },
-        { name: 'YCbCr', eventHandler: (evt) => console.log(evt.menuEntry) },
-        { name: 'CMYK', eventHandler: (evt) => console.log(evt.menuEntry) },
-        { name: 'HSL', eventHandler: (evt) => console.log(evt.menuEntry) },
-      // brighter
-      // darker
-      // save
-      // named
-        { name: 'Recent', eventHandler: (evt) => console.log(evt.menuEntry) },
-        { name: 'Saved', eventHandler: (evt) => console.log(evt.menuEntry) },
+        { name: 'HSB', style: {cursor: 'not-allowed'}, eventHandler: (evt) => notYetImplemented(evt.menuEntry.name, evt) },
+        { name: 'HWB', style: {cursor: 'not-allowed'}, eventHandler: (evt) => notYetImplemented(evt.menuEntry.name, evt) },
+        { name: 'HSL', style: {cursor: 'not-allowed'}, eventHandler: (evt) => notYetImplemented(evt.menuEntry.name, evt) },
+        { name: 'YCbCr', style: {cursor: 'not-allowed'}, eventHandler: (evt) => notYetImplemented(evt.menuEntry.name, evt) },
+        { name: 'CMYK', style: {cursor: 'not-allowed'}, eventHandler: (evt) => notYetImplemented(evt.menuEntry.name, evt) },
+        { name: 'Named', style: {cursor: 'not-allowed'}, eventHandler: (evt) => notYetImplemented(evt.menuEntry.name, evt) },
+        // { name: 'Recent', eventHandler: (evt) => notYetImplemented(evt.menuEntry.name, evt) },
+        // { name: 'Saved', eventHandler: (evt) => notYetImplemented(evt.menuEntry.name, evt) },
         {
           name: 'Random', eventHandler: (evt) => {
             evt.menu.setColorRandom();
