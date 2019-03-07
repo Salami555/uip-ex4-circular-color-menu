@@ -439,13 +439,13 @@
           }
           if (min.degree < degree && degree < max.degree) {
             // do nothing
-          } else if (cachedProperties.minPos.x < clientX && clientX < cachedProperties.maxPos.x) {
+          } else {
+            if(clientX < cachedProperties.minPos.x) clientX = cachedProperties.minPos.x;
+            if(clientX > cachedProperties.maxPos.x) clientX = cachedProperties.maxPos.x;
             const dx = (clientX - cachedProperties.minPos.x) / (cachedProperties.maxPos.x - cachedProperties.minPos.x);
             degree = 90 - Math.acos(dx * 2 - 1) * 180 / Math.PI;
             if (degree < min.degree) degree = min.degree;
             if (degree > max.degree) degree = max.degree;
-          } else {
-            return;
           }
           sliderGroup.updateValue(degreeToValue(degree));
         }
